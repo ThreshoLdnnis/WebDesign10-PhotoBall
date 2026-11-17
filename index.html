@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#e6e5e1">
+  <title>Orbit — Planets You Can Walk</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500&family=Jacquarda+Bastarda+9&family=Pinyon+Script&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #e6e5e1;
+      --bg-2: #dcdbd6;
+      --ink: #121212;
+      --muted: #55534f;
+      --accent: #ff6a2b;
+      --pill: #1a1a1a;
+      --gutter: clamp(16px, 2.2vw, 32px);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    html { overflow: hidden; }
+    body {
+      background: radial-gradient(120% 90% at 50% 45%, #efeeea 0%, var(--bg) 55%, var(--bg-2) 100%);
+      color: var(--ink);
+      font-family: "Inter Tight", system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+      touch-action: none;
+    }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+
+    .stage {
+      position: fixed;
+      inset: 0;
+      perspective: var(--persp, 1200px);
+      perspective-origin: 50% 50%;
+      cursor: grab;
+      z-index: 1;
+    }
+    .stage.dragging { cursor: grabbing; }
+    .world {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 0;
+      height: 0;
+      transform-style: preserve-3d;
+    }
+    .card {
+      position: absolute;
+      left: calc(var(--cw) / -2);
+      top: calc(var(--ch) / -2);
+      width: var(--cw);
+      height: var(--ch);
+      transform-style: preserve-3d;
+      border-radius: calc(var(--cw) * .045);
+      overflow: hidden;
+      background: #cfcdc8;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, .35) inset;
+      cursor: pointer;
+      backface-visibility: visible;
+    }
+    .card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-drag: none;
+      opacity: 0;
+      transition: opacity .8s ease;
+    }
+    .card img.ok { opacity: 1; }
+    .card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(135deg, rgba(255, 255, 255, .18), rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, .08));
+    }
+
+    .ui { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+    .ui a, .ui button { pointer-events: auto; }
+    .title {
+      position: absolute;
+      left: var(--gutter);
+      top: calc(var(--gutter) + 40px);
+      font-weight: 400;
+      font-size: clamp(30px, 3.3vw, 52px);
+      line-height: 1.02;
+      letter-spacing: -.025em;
+    }
+    .title .script {
+      font-family: "Pinyon Script", cursive;
+      font-size: 1.12em;
+      letter-spacing: 0;
+      padding-right: .08em;
+    }
+    .title-2 {
+      position: absolute;
+      right: var(--gutter);
+      bottom: calc(var(--gutter) + 20px);
+      text-align: right;
+      font-weight: 400;
+      font-size: clamp(30px, 3.3vw, 52px);
+      line-height: 1.02;
+      letter-spacing: -.025em;
+    }
+    .title-2 .pixel {
+      font-family: "Jacquarda Bastarda 9", serif;
+      font-size: 1.04em;
+      letter-spacing: 0;
+    }
+    .line { display: block; overflow: hidden; padding-bottom: .06em; }
+    .line > span {
+      display: inline-block;
+      transform: translateY(110%);
+      transition: transform 1.1s cubic-bezier(.2, .8, .2, 1);
+    }
+    .ready .line > span { transform: none; }
+    .line:nth-child(2) > span { transition-delay: .12s; }
+    .badge {
+      position: absolute;
+      left: var(--gutter);
+      top: calc(var(--gutter) + 40px + clamp(30px, 3.3vw, 52px) * 2.3 + 26px);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+      color: var(--ink);
+      text-decoration: none;
+    }
+    .badge .dot {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #fff 0 18%, #ffb27f 30%, var(--accent) 60%, #7a2a08 100%);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, .6);
+    }
+    .badge span { border-bottom: 1px solid currentColor; padding-bottom: 1px; }
+    .meta {
+      position: absolute;
+      top: calc(var(--gutter) + 46px);
+      right: var(--gutter);
+      display: grid;
+      grid-template-columns: auto 15.5em;
+      gap: clamp(24px, 4vw, 56px);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .meta p { max-width: 15.5em; }
+    .brand {
+      position: absolute;
+      left: var(--gutter);
+      top: var(--gutter);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      font-weight: 500;
+    }
+    .brand svg { width: 18px; height: 18px; }
+    .counter {
+      position: absolute;
+      right: var(--gutter);
+      top: var(--gutter);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+    }
+    .lede {
+      position: absolute;
+      left: var(--gutter);
+      bottom: calc(var(--gutter) + 20px);
+      max-width: 16.5em;
+      font-size: 12px;
+      line-height: 1.38;
+    }
+    .fade {
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity .9s ease .5s, transform .9s ease .5s;
+    }
+    .ready .fade { opacity: 1; transform: none; }
+    .pill {
+      position: absolute;
+      left: 0;
+      right: 0;
+      margin: 0 auto;
+      width: max-content;
+      bottom: calc(var(--gutter) + 8px);
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 18px 5px 5px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .45);
+      backdrop-filter: blur(14px) saturate(1.3);
+      -webkit-backdrop-filter: blur(14px) saturate(1.3);
+      box-shadow: 0 1px 0 rgba(255, 255, 255, .7) inset, 0 10px 30px -12px rgba(0, 0, 0, .25);
+      font-size: 12px;
+    }
+    .pill button {
+      border: 0;
+      background: none;
+      font: inherit;
+      color: var(--ink);
+      cursor: pointer;
+      padding: 10px 14px;
+      border-radius: 999px;
+      position: relative;
+      white-space: nowrap;
+      transition: background .3s ease, color .3s ease;
+    }
+    .pill button:hover { background: rgba(0, 0, 0, .06); }
+    .pill .logo {
+      width: 42px;
+      height: 42px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      background: var(--pill);
+      color: #fff;
+      transition: transform .6s cubic-bezier(.2, .8, .2, 1), background .3s;
+    }
+    .pill .logo:hover { background: #000; }
+    .pill .logo svg { width: 20px; height: 20px; }
+    .focused-ui .pill .logo { transform: rotate(135deg); }
+    .pill sup {
+      font-size: 8px;
+      margin-left: 2px;
+      color: var(--muted);
+      vertical-align: top;
+      position: relative;
+      top: -2px;
+    }
+    .pill .sep { width: 1px; height: 16px; background: rgba(0, 0, 0, .15); }
+    .meta, .lede, .badge { transition: opacity .6s ease; }
+
+    @media (max-width: 900px) {
+      .meta { grid-template-columns: 1fr; gap: 6px; text-align: right; top: calc(var(--gutter) + 40px); }
+      .meta p { margin-left: auto; }
+    }
+    @media (max-width: 640px) {
+      .title { top: calc(var(--gutter) + 34px); font-size: 34px; }
+      .title-2 { font-size: 34px; bottom: calc(var(--gutter) + 78px); }
+      .badge { top: calc(var(--gutter) + 34px + 34px * 2.3 + 16px); }
+      .meta { top: calc(var(--gutter) + 38px); font-size: 11px; }
+      .meta p:last-child { display: none; }
+      .lede { display: none; }
+      .pill { bottom: calc(var(--gutter) + env(safe-area-inset-bottom, 0px)); padding-right: 10px; }
+      .pill button { padding: 10px; }
+      .focused-ui .title, .focused-ui .title-2, .focused-ui .badge, .focused-ui .meta { opacity: 0; }
+      .title, .title-2 { transition: opacity .5s ease; }
+    }
+    @media (max-height: 520px) and (orientation: landscape) {
+      .lede, .badge { display: none; }
+      .title, .title-2 { font-size: 26px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .line > span, .fade { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage"><div class="world" id="world"></div></div>
+
+  <div class="ui" id="ui">
+    <div class="brand fade">
+      <svg viewBox="0 0 48 48" width="18" height="18" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" aria-hidden="true">
+        <circle cx="24" cy="24" r="6.5"/>
+        <ellipse cx="24" cy="24" rx="20" ry="7.5" transform="rotate(-28 24 24)"/>
+      </svg>
+      <span>Orbit</span>
+    </div>
+    <div class="counter fade" id="counter" role="status" aria-live="polite" aria-atomic="true">00 / 12</div>
+    <h1 class="title">
+      <span class="line"><span><span class="script">Orbit</span> You</span></span>
+      <span class="line"><span>Can Reach</span></span>
+    </h1>
+    <a class="badge fade" href="#" onclick="return false"><i class="dot" aria-hidden="true"></i><span>Zero-Gravity Journey</span></a>
+    <div class="meta fade"><p>Deep &amp; Celestial</p><p>Charting Paths into Distant Silent Horizons</p></div>
+    <p class="lede fade">From zero-gravity suites to cinematic orbital sunrise flights, our crew turns far-off cosmic dreams into voyages that feel close, calm, and unforgettable for all.</p>
+    <h2 class="title-2">
+      <span class="line"><span><span class="pixel">Planets</span></span></span>
+      <span class="line"><span>You Can Walk</span></span>
+    </h2>
+    <nav class="pill fade" aria-label="Primary">
+      <button class="logo" id="home" type="button" aria-label="Back to orbit view">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M12 3v6M12 15v6M3 12h6M15 12h6"/>
+          <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+        </svg>
+      </button>
+      <button id="trip" type="button">Trip<sup>12</sup></button>
+      <span class="sep" aria-hidden="true"></span>
+      <button id="launch" type="button">Launch Voyage</button>
+    </nav>
+  </div>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const BASE = 'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20261103_';
+      const IMAGES = [
+        ['151929_af80b51c-d8fd-4c4b-b34e-660c1e79956c', 'Helmet Portrait'],
+        ['151929_73d5a48d-1a04-4e1b-85cc-865b11005042', 'Orbital Shuttle'],
+        ['151929_b6ddb098-5f97-44dd-ada0-590831ec9092', 'Ember Crystal'],
+        ['151929_42554bc8-e9a8-4805-a61c-e279562532fb', 'Ringed Dunes'],
+        ['151929_7ed059c4-5fd6-4ce8-8759-adf4c38d66f8', 'Flight Console'],
+        ['151929_e5b64aeb-4718-4ba7-8823-b3cb969f5aa3', 'Lunar Surface'],
+        ['151931_1fab05d3-3fd8-41a7-b152-7652b3ca34bc', 'Station Module'],
+        ['151930_aa25be86-3acd-40b0-a9b3-3f3ab353e46f', 'Gold Visor'],
+        ['151929_a6f8b26b-d3a4-479e-9bd0-19a3b9d4f774', 'Weightless Cabin'],
+        ['151930_246d3548-cc57-46fe-81d5-3de802adf65c', 'Dusk Launch'],
+        ['151929_5ee556d3-7d39-46b3-9ddf-207b4bae82e5', 'Lunar Rover'],
+        ['151930_840e27fb-2cdf-4074-98b7-e860fe177432', 'Spiral Nebula']
+      ].map(([id, name]) => ({ src: BASE + id + '.png', name }));
+      const RINGS = [[-68, 4], [-41, 9], [-13.5, 12], [13.5, 12], [41, 9], [68, 4]];
+      const stage = document.getElementById('stage');
+      const world = document.getElementById('world');
+      const ui = document.getElementById('ui');
+      const counter = document.getElementById('counter');
+      const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+      const cards = [];
+      const fragment = document.createDocumentFragment();
+      let SPIN = motion.matches ? 0 : .06;
+
+      RINGS.forEach(([lat, count], ri) => {
+        for (let i = 0; i < count; i++) {
+          const n = cards.length;
+          const lon = (360 / count) * i + (ri % 2 ? 180 / count : 0);
+          const img = IMAGES[(n * 5 + ri) % IMAGES.length];
+          const el = document.createElement('div');
+          el.className = 'card';
+          el.dataset.i = n;
+          el.tabIndex = 0;
+          el.setAttribute('role', 'button');
+          el.setAttribute('aria-pressed', 'false');
+          const image = document.createElement('img');
+          image.alt = img.name;
+          image.decoding = 'async';
+          image.draggable = false;
+          image.onload = () => image.classList.add('ok');
+          image.src = img.src;
+          el.appendChild(image);
+          fragment.appendChild(el);
+          cards.push({ el, lat, lon, img });
+        }
+      });
+      world.appendChild(fragment);
+
+      let R, CW, K, P;
+      let focus = null;
+      let rx = -14, ry = -40;
+      let rxT = -10, ryT = 0;
+      let vx = 0, vy = 0;
+      let mx = 0, my = 0, pmx = 0, pmy = 0;
+      let pointerId = null, lastX = 0, lastY = 0, moved = 0;
+      let tripIndex = -1;
+      const equator = cards.filter(c => Math.abs(c.lat) < 20);
+
+      const focusWidth = () => Math.min(innerWidth * (innerWidth < 640 ? .86 : .62), innerHeight * .62 / .75);
+      const idleZoom = () => P - K * P;
+      const focusZoom = () => P * (1 - 1 / (focusWidth() / CW)) - R;
+      const nearest = (cur, target) => cur + ((((target - cur) % 360) + 540) % 360 - 180);
+      const ease = (k, f) => 1 - Math.pow(1 - k, f);
+
+      function layout() {
+        const w = innerWidth, h = innerHeight;
+        const mobile = w < 640;
+        const r = Math.min(w * (mobile ? .43 : .27), h * (mobile ? .30 : .36));
+        const smallW = r * .46;
+        // Large intrinsic cards remain sharp when the camera flies into the sphere.
+        CW = Math.min(focusWidth(), 640);
+        K = CW / smallW;
+        R = r * K;
+        const CH = CW * .75;
+        P = Math.max(900, Math.min(w, h) * 2.2);
+        const root = document.documentElement.style;
+        root.setProperty('--r', R + 'px');
+        root.setProperty('--cw', CW + 'px');
+        root.setProperty('--ch', CH + 'px');
+        root.setProperty('--persp', P + 'px');
+        cards.forEach(c => {
+          c.el.style.transform = `rotateY(${c.lon}deg) rotateX(${c.lat}deg) translateZ(${R}px)`;
+        });
+      }
+
+      layout();
+      let zoom = P - K * P * 2.6;
+      let zoomT = idleZoom();
+
+      function setFocus(c) {
+        focus = c;
+        vx = vy = 0;
+        cards.forEach(card => {
+          const active = card === c;
+          card.el.classList.toggle('active', active);
+          card.el.setAttribute('aria-pressed', String(active));
+        });
+        if (c) {
+          ryT = nearest(ry, -c.lon);
+          rxT = -c.lat;
+          zoomT = focusZoom();
+          counter.textContent = String(IMAGES.indexOf(c.img) + 1).padStart(2, '0') + ' / 12';
+        } else {
+          rxT = -10;
+          zoomT = idleZoom();
+          counter.textContent = '00 / 12';
+        }
+        document.body.classList.toggle('focused', Boolean(c));
+        ui.classList.toggle('focused-ui', Boolean(c));
+      }
+
+      window.addEventListener('resize', () => {
+        layout();
+        zoomT = focus ? focusZoom() : idleZoom();
+      });
+      motion.addEventListener('change', event => { SPIN = event.matches ? 0 : .06; });
+
+      stage.addEventListener('pointerdown', event => {
+        if (!event.isPrimary || event.button !== 0 || pointerId !== null) return;
+        pointerId = event.pointerId;
+        lastX = event.clientX;
+        lastY = event.clientY;
+        moved = 0;
+        stage.setPointerCapture(pointerId);
+      });
+
+      window.addEventListener('pointermove', event => {
+        mx = Math.max(-.5, Math.min(.5, event.clientX / innerWidth - .5));
+        my = Math.max(-.5, Math.min(.5, event.clientY / innerHeight - .5));
+        if (event.pointerId !== pointerId) return;
+        const dx = event.clientX - lastX;
+        const dy = event.clientY - lastY;
+        lastX = event.clientX;
+        lastY = event.clientY;
+        moved += Math.abs(dx) + Math.abs(dy);
+        if (moved > 6 && !focus) {
+          stage.classList.add('dragging');
+          ryT += dx * .25;
+          rxT -= dy * .2;
+          vy = dx * .04;
+          vx = -dy * .02;
+        }
+      });
+
+      function resetPointer() {
+        const id = pointerId;
+        pointerId = null;
+        stage.classList.remove('dragging');
+        if (id !== null && stage.hasPointerCapture(id)) stage.releasePointerCapture(id);
+      }
+
+      window.addEventListener('pointerup', event => {
+        if (event.pointerId !== pointerId) return;
+        const tapped = moved <= 6;
+        resetPointer();
+        if (!tapped) return;
+        const hit = document.elementsFromPoint(event.clientX, event.clientY)
+          .map(el => el.closest('.card'))
+          .find(el => el && world.contains(el));
+        const c = hit ? cards[Number(hit.dataset.i)] : null;
+        if (focus) setFocus(c && c !== focus ? c : null);
+        else if (c) setFocus(c);
+      });
+      window.addEventListener('pointercancel', event => {
+        if (event.pointerId === pointerId) resetPointer();
+      });
+      stage.addEventListener('lostpointercapture', event => {
+        if (event.pointerId === pointerId) resetPointer();
+      });
+      window.addEventListener('blur', () => { resetPointer(); mx = my = 0; });
+
+      window.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          setFocus(null);
+        } else if (focus && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
+          event.preventDefault();
+          const ring = cards.filter(c => c.lat === focus.lat);
+          const direction = event.key === 'ArrowRight' ? 1 : -1;
+          setFocus(ring[(ring.indexOf(focus) + direction + ring.length) % ring.length]);
+        } else if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('.card')) {
+          event.preventDefault();
+          const c = cards[Number(event.target.dataset.i)];
+          setFocus(c === focus ? null : c);
+        }
+      });
+
+      document.getElementById('home').addEventListener('click', () => setFocus(null));
+      document.getElementById('trip').addEventListener('click', () => {
+        const current = equator.indexOf(focus);
+        tripIndex = ((current >= 0 ? current : tripIndex) + 1) % equator.length;
+        setFocus(equator[tripIndex]);
+      });
+      document.getElementById('launch').addEventListener('click', () => {
+        const choices = cards.filter(c => c !== focus);
+        setFocus(choices[Math.floor(Math.random() * choices.length)]);
+      });
+
+      let previousTime = null;
+      function animate(time) {
+        if (previousTime === null) setTimeout(() => document.body.classList.add('ready'), 250);
+        const dt = previousTime === null ? 16.67 : time - previousTime;
+        previousTime = time;
+        const f = Math.min(4, dt / 16.67);
+        if (!focus) {
+          ryT += (SPIN + vy) * f;
+          rxT += vx * f;
+          vy *= Math.pow(.94, f);
+          vx *= Math.pow(.9, f);
+          rxT = Math.max(-40, Math.min(40, rxT));
+        }
+        pmx += (mx - pmx) * ease(.06, f);
+        pmy += (my - pmy) * ease(.06, f);
+        const rotationEase = ease(focus ? .075 : .085, f);
+        rx += (rxT - rx) * rotationEase;
+        ry += (ryT - ry) * rotationEase;
+        zoom += (zoomT - zoom) * ease(focus ? .07 : .06, f);
+        const tiltX = focus ? pmy * -3 : pmy * -6;
+        const tiltY = focus ? pmx * 4 : pmx * 8;
+        world.style.transform = `translateZ(${zoom}px) rotateX(${rx + tiltX}deg) rotateY(${ry + tiltY}deg)`;
+        requestAnimationFrame(animate);
+      }
+      requestAnimationFrame(animate);
+    })();
+  </script>
+</body>
+</html>
